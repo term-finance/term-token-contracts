@@ -1,0 +1,55 @@
+name: "[fuji-tools] cross chain transfer"
+on:
+  workflow_dispatch:
+    inputs:
+      termTokenAddress:
+        description: "term token address"
+        required: true
+      destinationEndpoint:
+        description: "destination endpoint id"
+        required: true
+      toAddress:
+        description: "destination address"
+        required: true
+      amountInLocalDecimals:
+        description: "amount in local decimals"
+        required: true
+      minAmountInLocalDecimals:
+        description: "minimum amount in local decimals"
+        required: true
+      refundAddress:
+        description: "address to refund gas tokens to in case of failure"
+        required: true
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    environment: 
+      name: fuji
+      url: https://term-finance.github.io/term-token/
+    steps:
+      - uses: actions/checkout@master
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+      - run: yarn install --immutable
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: yarn install
+      - run: forge install
+      - run: forge build
+      - run: forge tree
+      - run: forge script script/CrossChainTransfer.s.sol:CrossChainTransfer --rpc-url $RPC_URL --broadcast --verbosity 4
+        env:
+          RPC_URL:  ${{ secrets.RPC_URL }}
+          X_CHAIN_PRIVATE_KEY: ${{ secrets.X_CHAIN_PRIVATE_KEY }}
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+          TERM_TOKEN_ADDRESS: ${{ github.event.inputs.termTokenAddress }}
+          DESTINATION_ENDPOINT: ${{ github.event.inputs.destinationEndpoint }}
+          DESTINATION_ADDRESS: ${{ github.event.inputs.toAddress }}
+          AMOUNT_IN_LD: ${{ github.event.inputs.amountInLocalDecimals }}
+          MIN_AMOUNT_IN_LD: ${{ github.event.inputs.minAmountInLocalDecimals }}
+          REFUND_ADDRESS: ${{ github.event.inputs.refundAddress }}

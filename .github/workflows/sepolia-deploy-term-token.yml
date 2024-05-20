@@ -1,0 +1,43 @@
+name: "[sepolia-deploy] deploy term-token"
+on:
+  workflow_dispatch:
+    inputs:
+      tokenMintSupply:
+        description: "Maximum token supply minted"
+        required: true
+      mintAddress:
+        description: "Mint Address"
+        required: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: 
+      name: sepolia
+      url: https://term-finance.github.io/term-token/
+    steps:
+      - uses: actions/checkout@master
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+      - run: yarn install --immutable
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: yarn install
+      - run: forge install
+      - run: forge build
+      - run: forge tree
+      - run: forge script script/TermToken.s.sol:DeployTermToken --rpc-url $RPC_URL --broadcast --verify --verbosity 4
+        env:
+          RPC_URL:  ${{ secrets.RPC_URL }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+          LZ_ENDPOINT: ${{ vars.LZ_ENDPOINT }}
+          ADMIN_WALLET: ${{ vars.ADMIN_WALLET }}
+          PAUSE_WALLET: ${{ vars.PAUSE_WALLET }}
+          UPGRADE_WALLET: ${{ vars.UPGRADE_WALLET }}
+          TOKEN_MINT_SUPPLY: ${{ github.event.inputs.tokenMintSupply }}
+          MINT_ADDRESS: ${{ github.event.inputs.mintAddress }}
