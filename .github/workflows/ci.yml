@@ -16,5 +16,4 @@ jobs:
       - run: yarn install --immutable
       - uses: foundry-rs/foundry-toolchain@v1
       - run: yarn install
-      - run: forge test -vvv
       - run: forge snapshot

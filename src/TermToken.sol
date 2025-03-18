@@ -71,7 +71,27 @@ contract TermToken is Initializable, ContextUpgradeable, OFTCore, ERC20Upgradeab
     function token() external view returns (address) {
         return address(this);
     }
+    
+    /**
+     * @dev Returns the current block timestamp.
+     * This function is used to get the current time in seconds since the Unix epoch.
+     * 
+     * @return uint256 The current block timestamp.
+     */
+    function clock() public view override (VotesUpgradeable) returns (uint48) {
+        return uint48(block.timestamp);
+    }
 
+    /**
+     * @dev Returns the current mode of the clock.
+     * The mode can be one of the predefined constants representing different clock states.
+     * 
+     * @return uint256 representing the current clock mode.
+     */
+    function CLOCK_MODE() public pure override (VotesUpgradeable) returns (string memory) {
+        return "mode=timestamp&from=default";
+    }
+    
     /**
      * @notice Indicates whether the OFT contract requires approval of the 'token()' to send.
      * @return requiresApproval Needs approval of the underlying token implementation.
