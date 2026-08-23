@@ -103,13 +103,13 @@ contract TermToken is Initializable, ContextUpgradeable, OFTCore, ERC20Upgradeab
     }
 
     /**
-     * @dev public mint function
+     * @dev mint function, restricted to DEFAULT_ADMIN_ROLE
      * @param amount amount of tokens to mint
      */
     function mint(
         uint256 amount
-    ) external returns (uint256) {
-        require(mintingNotPaused || hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Minting Paused");
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) returns (uint256) {
+        require(mintingNotPaused, "Minting Paused");
         _mint(msg.sender , amount);
         return amount;
     }
