@@ -15,14 +15,13 @@ contract DeployTermToken is Script {
         vm.startBroadcast(deployerPK);
 
         // Retrieve environment variables
-        address lzEndpoint = vm.envAddress("LZ_ENDPOINT");
         address admin = vm.envAddress("ADMIN_WALLET");
         address pauser = vm.envAddress("PAUSE_WALLET");
         address upgrader = vm.envAddress("UPGRADE_WALLET");
         uint256 tokenMintSupply = vm.envUint("TOKEN_MINT_SUPPLY");
         address mintAddress = vm.envAddress("MINT_ADDRESS");
 
-        TermToken impl = new TermToken(lzEndpoint, admin);
+        TermToken impl = new TermToken();
 
         console.log("deployed impl contract to");
         console.log(address(impl));

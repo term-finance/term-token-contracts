@@ -2,8 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
-import "../src/TermToken.sol";
-import { SendParam, MessagingFee } from "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/interfaces/IOFT.sol";
+import { IOFT, SendParam, MessagingFee } from "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/interfaces/IOFT.sol";
 import { OptionsBuilder } from "@layerzerolabs/lz-evm-oapp-v2/contracts/oapp/libs/OptionsBuilder.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
@@ -28,7 +27,7 @@ contract CrossChainTransfer is Script {
 
         bytes32 toAddressBytes = bytes32(uint(uint160(toAddress)));
 
-        TermToken token = TermToken(termTokenAddress);
+        IOFT token = IOFT(termTokenAddress);
 
         //bytes memory options = OptionsBuilder.encodeLegacyOptionsType1(60000);
 
