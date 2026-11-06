@@ -9,23 +9,29 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20VotesUpg
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import "@openzeppelin/contracts/utils/Context.sol";
-
-import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
-
-import "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/OFTCore.sol";
-
 
 /// @custom:security-contact devops@termfinance.io
-contract TermToken is Initializable, ContextUpgradeable, OFTCore, ERC20Upgradeable, ERC20PausableUpgradeable, AccessControlUpgradeable, ERC20PermitUpgradeable, ERC20VotesUpgradeable, UUPSUpgradeable {
+/// @dev ERC20PausableUpgradeable must stay listed after ERC20VotesUpgradeable, see _update.
+contract TermToken is Initializable, ContextUpgradeable, ERC20Upgradeable, AccessControlUpgradeable, ERC20PermitUpgradeable, ERC20VotesUpgradeable, ERC20PausableUpgradeable, UUPSUpgradeable {
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+
+    // Slots 0-4 held the state of the LayerZero OFTCore parent (Ownable, OAppCore,
+    // OAppPreCrimeSimulator, OAppOptionsType3, OFTCore) before OFT support was removed. They are kept
+    // with the same order and types so that the live proxy's burningNotPaused and mintingNotPaused
+    // stay packed into slot 4 after msgInspector. Do not remove, reorder, retype or reuse them: the
+    // live proxy still holds its old owner address in slot 0.
+    address private __deprecated_owner;
+    mapping(uint32 => bytes32) private __deprecated_peers;
+    address private __deprecated_preCrime;
+    mapping(uint32 => mapping(uint16 => bytes)) private __deprecated_enforcedOptions;
+    address private __deprecated_msgInspector;
 
     bool public burningNotPaused;
     bool public mintingNotPaused;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor(address _lzEndpoint, address _delegate) OFTCore(18, _lzEndpoint, _delegate) Ownable(msg.sender) {
+    constructor() {
         _disableInitializers();
     }
 
@@ -44,34 +50,9 @@ contract TermToken is Initializable, ContextUpgradeable, OFTCore, ERC20Upgradeab
         _grantRole(PAUSER_ROLE, pauser);
         _grantRole(UPGRADER_ROLE, upgrader);
 
-        _transferOwnership(defaultAdmin);
         _mint(mintAddress, tokenMintSupply);
     }
 
-    /**
-     * @notice Retrieves interfaceID and the version of the OFT.
-     * @return interfaceId The interface ID.
-     * @return version The version.
-     *
-     * @dev interfaceId: This specific interface ID is '0x02e49c2c'.
-     * @dev version: Indicates a cross-chain compatible msg encoding with other OFTs.
-     * @dev If a new feature is added to the OFT cross-chain msg encoding, the version will be incremented.
-     * ie. localOFT version(x,1) CAN send messages to remoteOFT version(x,1)
-     */
-    function oftVersion() external pure virtual returns (bytes4 interfaceId, uint64 version) {
-        return (type(IOFT).interfaceId, 1);
-    }
-
-    /**
-     * @dev Retrieves the address of the underlying ERC20 implementation.
-     * @return The address of the OFT token.
-     *
-     * @dev In the case of OFT, address(this) and erc20 are the same contract.
-     */
-    function token() external view returns (address) {
-        return address(this);
-    }
-    
     /**
      * @dev Returns the current block timestamp.
      * This function is used to get the current time in seconds since the Unix epoch.
@@ -93,78 +74,27 @@ contract TermToken is Initializable, ContextUpgradeable, OFTCore, ERC20Upgradeab
     }
     
     /**
-     * @notice Indicates whether the OFT contract requires approval of the 'token()' to send.
-     * @return requiresApproval Needs approval of the underlying token implementation.
-     *
-     * @dev In the case of OFT where the contract IS the token, approval is NOT required.
-     */
-    function approvalRequired() external pure virtual returns (bool) {
-        return false;
-    }
-
-    /**
      * @dev public mint function
      * @param amount amount of tokens to mint
      */
     function mint(
         uint256 amount
-    ) external returns (uint256) {
-        require(mintingNotPaused || hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Minting Paused");
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) returns (uint256) {
+        require(mintingNotPaused, "Minting Paused");
         _mint(msg.sender , amount);
         return amount;
     }
 
     /**
      * @dev public burn function
-     * @param amount amount of tokens to mint
+     * @param amount amount of tokens to burn
      */
     function burn(
         uint256 amount
-    ) external returns (uint256) {
-        require(burningNotPaused || hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Burning Paused");
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) returns (uint256)  {
+        require(burningNotPaused, "Burning Paused");
         _burn(msg.sender , amount);
         return amount;
-    }
-
-
-    /**
-     * @dev Burns tokens from the sender's specified balance.
-     * @param _amountLD The amount of tokens to send in local decimals.
-     * @param _minAmountLD The minimum amount to send in local decimals.
-     * @param _dstEid The destination chain ID.
-     * @return amountSentLD The amount sent in local decimals.
-     * @return amountReceivedLD The amount received in local decimals on the remote.
-     */
-    function _debit(
-        uint256 _amountLD,
-        uint256 _minAmountLD,
-        uint32 _dstEid
-    ) internal virtual override returns (uint256 amountSentLD, uint256 amountReceivedLD) {
-        (amountSentLD, amountReceivedLD) = _debitView(_amountLD, _minAmountLD, _dstEid);
-
-        // @dev In NON-default OFT, amountSentLD could be 100, with a 10% fee, the amountReceivedLD amount is 90,
-        // therefore amountSentLD CAN differ from amountReceivedLD.
-
-        // @dev Default OFT burns on src.
-        _burn(msg.sender, amountSentLD);
-    }
-
-    /**
-     * @dev Credits tokens to the specified address.
-     * @param _to The address to credit the tokens to.
-     * @param _amountLD The amount of tokens to credit in local decimals.
-     * @dev _srcEid The source chain ID.
-     * @return amountReceivedLD The amount of tokens ACTUALLY received in local decimals.
-     */
-    function _credit(
-        address _to,
-        uint256 _amountLD,
-        uint32 /*_srcEid*/
-    ) internal virtual override returns (uint256 amountReceivedLD) {
-        // @dev Default OFT mints on dst.
-        _mint(_to, _amountLD);
-        // @dev In the case of NON-default OFT, the _amountLD MIGHT not be == amountReceivedLD.
-        return _amountLD;
     }
 
     //@dev pauses all transfers
@@ -175,22 +105,6 @@ contract TermToken is Initializable, ContextUpgradeable, OFTCore, ERC20Upgradeab
     //@dev unpauses all transfers
     function unpause() public onlyRole(PAUSER_ROLE) {
         _unpause();
-    }
-
-    // @dev solidity requires this override
-     function _msgSender() internal view override(ContextUpgradeable, Context) returns (address) {
-        return super._msgSender();
-    }
-
-    // @dev solidity requires this override
-    function _msgData() internal view override(ContextUpgradeable, Context) returns (bytes calldata) {
-        return super._msgData();
-    }
-
-    // @dev solidity requires this override
-    function _contextSuffixLength() internal view 
-    override(ContextUpgradeable, Context) returns (uint256) {
-        return super._contextSuffixLength();
     }
 
     function _authorizeUpgrade(address newImplementation)
@@ -207,10 +121,15 @@ contract TermToken is Initializable, ContextUpgradeable, OFTCore, ERC20Upgradeab
     {
         require(to != address(this), "TermToken: cannot transfer tokens to token contract");
         // Token transfers are only possible if the contract is not paused
-        // OR if triggered by the owner of the contract
+        // OR if triggered by an account with DEFAULT_ADMIN_ROLE
         require(!paused() || hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "TermToken: token transfer while paused");
-        
-        super._update(from, to, value);
+
+        // @dev Calls ERC20VotesUpgradeable._update instead of super._update so that the
+        // whenNotPaused check in ERC20PausableUpgradeable._update is skipped and the admin
+        // exemption above takes effect. Because ERC20PausableUpgradeable is listed after
+        // ERC20VotesUpgradeable, the super._update inside ERC20VotesUpgradeable resolves
+        // directly to ERC20Upgradeable. Reordering the inheritance list re-enables whenNotPaused.
+        ERC20VotesUpgradeable._update(from, to, value);
     }
 
     function nonces(address owner)

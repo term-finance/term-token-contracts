@@ -17,7 +17,8 @@ import "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/OFTCore.sol";
 
 
 /// @custom:security-contact devops@termfinance.io
-contract TermTokenL2 is Initializable, ContextUpgradeable, OFTCore, ERC20Upgradeable, ERC20PausableUpgradeable, AccessControlUpgradeable, ERC20PermitUpgradeable, ERC20VotesUpgradeable, UUPSUpgradeable {
+/// @dev ERC20PausableUpgradeable must stay listed after ERC20VotesUpgradeable, see _update.
+contract TermTokenL2 is Initializable, ContextUpgradeable, OFTCore, ERC20Upgradeable, AccessControlUpgradeable, ERC20PermitUpgradeable, ERC20VotesUpgradeable, ERC20PausableUpgradeable, UUPSUpgradeable {
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
@@ -178,10 +179,15 @@ contract TermTokenL2 is Initializable, ContextUpgradeable, OFTCore, ERC20Upgrade
     {
         require(to != address(this), "TermToken: cannot transfer tokens to token contract");
         // Token transfers are only possible if the contract is not paused
-        // OR if triggered by the owner of the contract
+        // OR if triggered by an account with DEFAULT_ADMIN_ROLE
         require(!paused() || hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "TermToken: token transfer while paused");
-        
-        super._update(from, to, value);
+
+        // @dev Calls ERC20VotesUpgradeable._update instead of super._update so that the
+        // whenNotPaused check in ERC20PausableUpgradeable._update is skipped and the admin
+        // exemption above takes effect. Because ERC20PausableUpgradeable is listed after
+        // ERC20VotesUpgradeable, the super._update inside ERC20VotesUpgradeable resolves
+        // directly to ERC20Upgradeable. Reordering the inheritance list re-enables whenNotPaused.
+        ERC20VotesUpgradeable._update(from, to, value);
     }
 
     function nonces(address owner)
